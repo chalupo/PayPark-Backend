@@ -383,3 +383,84 @@ git diff --cached --name-only
 git commit -m "feat: implementar control de accesos y disponibilidad"
 git status --short
 ```
+
+## Etapa 5. Desarrollo del módulo de pagos
+
+Fecha: 30 de octubre de 2026.
+
+### Controlador y endpoints
+
+Se creó `PaymentController`, con index, show y store, reutilizando el modelo Payment. Las rutas se registran mediante apiResource limitado a esas tres acciones:
+
+| Método | Endpoint | Respuesta correcta |
+| --- | --- | --- |
+| GET | /api/payments | 200, listado ordenado por id |
+| GET | /api/payments/{payment} | 200, consulta individual |
+| POST | /api/payments | 201, pago creado |
+
+Las respuestas utilizan `{ "data": ... }`, con arreglo para el listado y objeto para un pago. El enlace implícito de Payment devuelve 404 con JSON si el registro no existe. No se añadieron rutas adicionales, actualizaciones ni eliminaciones de pagos.
+
+### Validaciones y reglas de negocio
+
+- access_id es requerido, entero y debe existir en accesses.
+- amount es requerido, numérico y mayor que cero.
+- Para respetar el decimal(10, 2) existente, amount permite de cero a dos decimales y un máximo de 99999999.99. Así se rechazan fracciones menores a un centavo en vez de presentarlas como cero mediante el cast decimal:2.
+- status se establece automáticamente en paid; paid_at utiliza now() del servidor. No se aceptan esos campos del cliente como fuente de estado o fecha.
+- Los datos inválidos devuelven 422 con message y errors. La creación válida devuelve 201.
+
+Se mantiene explícitamente la decisión de **un solo pago por acceso** adoptada en la etapa 2. access_id se valida con unique:payments,access_id para rechazar duplicados con 422; la restricción única de la base existente sigue actuando como respaldo. Payment::access() pertenece a Access y Access::payment() obtiene el pago asociado.
+
+La validación y creación se ejecutan dentro de DB::transaction, reutilizando la configuración SQLite IMMEDIATE de la etapa anterior para que las escrituras de esta API se serialicen antes de verificar duplicados. No se requirieron migraciones ni nuevas dependencias.
+
+No se impone que el acceso esté cerrado para registrar el pago, ya que no es una regla solicitada. El registro del pago no altera el acceso ni la disponibilidad. No se implementaron cálculos de tarifas, pasarelas reales ni servicios externos.
+
+### Pruebas realizadas
+
+Se añadió PaymentApiTest con RefreshDatabase y SQLite en memoria. Sus 13 casos ejecutados cubren:
+
+1. Registro válido con estado paid y relación correcta con el acceso en ambos sentidos.
+2. Listado de pagos.
+3. Consulta individual.
+4. JSON 404 para pago inexistente.
+5. Rechazo de access_id inexistente.
+6. Rechazo de monto cero.
+7. Rechazo de monto negativo.
+8. Rechazo de monto no numérico.
+9. Rechazo de fracciones menores a un centavo.
+10. Rechazo de monto fuera de la precisión declarada.
+11. Rechazo de campos obligatorios faltantes.
+12. Rechazo de pago duplicado sin modificar el pago original.
+13. Asignación de status y paid_at por el servidor, ignorando esos datos del cliente, y aceptación de 0.01.
+
+Las comparaciones de fechas usan un reloj fijado a segundos, conforme a la precisión de almacenamiento verificada en la etapa anterior.
+
+Comandos ejecutados en el contenedor temporal composer:2 ya utilizado:
+
+```bash
+php artisan route --no-interaction
+php artisan route:list --path=api/payments
+php artisan test
+```
+
+route mostró los subcomandos del espacio de comandos. route:list confirmó **3 rutas de pagos**: GET|HEAD /api/payments, POST /api/payments y GET|HEAD /api/payments/{payment}, asociadas a PaymentController.
+
+Resultado de la suite completa: **44 pruebas aprobadas y 189 aserciones**, duración registrada 0.58 segundos. Las 31 pruebas anteriores siguen aprobando.
+
+### Dificultades reales
+
+No se encontraron errores nuevos de implementación, rutas ni pruebas. Se reutilizó el entorno Docker previamente preparado sin descargar nuevas dependencias.
+
+### Revisión y commit
+
+Se revisaron git status y los archivos preparados. `.env`, SQLite local, vendor y logs continúan ignorados y no se versionan secretos.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Http/Controllers/PaymentController.php routes/api.php tests/Feature/PaymentApiTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: implementar módulo de pagos"
+git status --short
+```
