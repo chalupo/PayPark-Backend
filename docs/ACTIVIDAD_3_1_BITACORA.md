@@ -127,3 +127,81 @@ git status --short
 `.gitignore` excluye `.env`, variantes locales de configuración (exceptuando `.env.example`), bases SQLite, vendor, node_modules, logs, claves de storage, cachés y artefactos de compilación. Los directorios de almacenamiento conservan los .gitignore estándar de Laravel.
 
 Se revisó el índice (58 archivos) antes del commit para confirmar que solo contiene código, configuración de ejemplo, lock de dependencias y documentación; sin `.env`, bases locales, credenciales ni dependencias instaladas. Se retiraron tres espacios finales de líneas vacías de la vista estándar detectados por git diff --cached --check. El commit de esta etapa utiliza el mensaje `chore: initialize Laravel backend with SQLite`.
+
+
+## Etapa 2. Diseño e implementación del modelo de datos
+
+Fecha: 30 de octubre de 2026.
+
+### Modelos y migraciones
+
+Se crearon los modelos Eloquent `Vehicle`, `Access` y `Payment`, con asignación masiva limitada a sus campos y timestamps estándar. Se mantuvo el modelo `User` de Laravel y se agregó únicamente `vehicles()`; no se añadió role porque esta etapa no requiere permisos.
+
+Se añadieron estas migraciones, en orden de dependencia:
+
+- `2026_10_30_000001_create_vehicles_table`: id, user_id, plate única, brand, model, color y timestamps.
+- `2026_10_30_000002_create_accesses_table`: id, vehicle_id, entry_at, exit_at nullable, status y timestamps.
+- `2026_10_30_000003_create_payments_table`: id, access_id único, amount, paid_at, status y timestamps.
+
+Todas incluyen clave primaria y clave foránea hacia su registro padre. Se conserva el comportamiento restrictivo predeterminado al borrar un padre con registros asociados, sin borrados en cascada. Las migraciones incluyen down() para eliminar sus tablas en una reversión.
+
+### Relaciones establecidas
+
+| Relación | Método en el padre | Método inverso |
+| --- | --- | --- |
+| Usuario tiene varios vehículos | User::vehicles() — HasMany | Vehicle::user() — BelongsTo |
+| Vehículo tiene varios accesos | Vehicle::accesses() — HasMany | Access::vehicle() — BelongsTo |
+| Acceso tiene un pago | Access::payment() — HasOne | Payment::access() — BelongsTo |
+
+### Decisiones
+
+- La placa es obligatoria y única en la base de datos; no se implementó normalización de placas.
+- Los accesos permiten únicamente `active` y `closed`, con `active` como valor predeterminado; la migración enum genera la restricción correspondiente en SQLite.
+- exit_at puede permanecer null. entry_at, exit_at y paid_at se convierten a datetime en Eloquent.
+- access_id es único en payments para asegurar como máximo un pago por acceso, incluso al insertar directamente en la base.
+- amount utiliza decimal(10, 2) y cast decimal:2 en Eloquent. No se añadieron cálculos de tarifas ni reglas de cobro. SQLite conserva su tipado numérico habitual; la declaración decimal no añade por sí sola precisión fija al motor.
+- Payment::status es una cadena obligatoria; las pruebas usan `paid`. No se añadieron un flujo de estados de pago ni pasarelas reales.
+- No se añadieron controladores ni endpoints API.
+
+### Ejecución de migraciones y pruebas
+
+Se confirmó que la base local no contenía usuarios antes de reconstruirla. Se utilizaron las dependencias ya instaladas y el contenedor temporal composer:2 de la etapa anterior para ejecutar PHP, sin modificar las dependencias del proyecto.
+
+```bash
+php artisan migrate:fresh --no-interaction
+php artisan migrate:status
+php artisan test
+```
+
+Resultado de migrate:fresh: **6 migraciones aplicadas correctamente**, las tres estándar y las tres nuevas. migrate:status confirmó las seis como **[1] Ran**, sin pendientes.
+
+Se creó `tests/Feature/PayParkDataModelTest.php` con RefreshDatabase y SQLite en memoria. Sus cinco pruebas verifican:
+
+1. Creación de usuario, asociación de dos vehículos, dos accesos y un pago; persistencia y relaciones Eloquent en ambos sentidos; fechas, estado predeterminado y salida nullable.
+2. Rechazo de una placa duplicada, incluso para otro usuario.
+3. Rechazo de un segundo pago para el mismo acceso.
+4. Rechazo de un vehículo con usuario inexistente por clave foránea.
+5. Rechazo de un estado de acceso fuera de active/closed.
+
+La suite completa terminó con **7 pruebas aprobadas y 24 aserciones**, incluyendo las dos pruebas originales. Duración registrada: 0.28 segundos.
+
+### Dificultades reales
+
+No se encontraron errores de migraciones ni de pruebas durante esta etapa. Se reutilizó Docker por la ausencia de PHP nativo ya documentada en la etapa 1; no fue necesario descargar nuevas dependencias ni resolver nuevos problemas de red.
+
+### Revisión y commit
+
+Se revisaron git status, los cambios y las exclusiones de archivos sensibles. `.env`, la base SQLite local, vendor y logs permanecen fuera del índice. Se conserva `.env.example` sin secretos.
+
+Comandos de cierre:
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Models database/migrations tests/Feature/PayParkDataModelTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: crear modelos y relaciones principales de PayPark"
+git status --short
+```
