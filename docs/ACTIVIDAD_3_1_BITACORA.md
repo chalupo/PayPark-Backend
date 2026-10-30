@@ -205,3 +205,87 @@ git diff --cached --name-only
 git commit -m "feat: crear modelos y relaciones principales de PayPark"
 git status --short
 ```
+
+## Etapa 3. Desarrollo de la API de vehículos
+
+Fecha: 30 de octubre de 2026.
+
+### Controlador y rutas
+
+Se creó `app/Http/Controllers/VehicleController.php` con los métodos index, store, show, update y destroy. Se reutiliza el modelo Vehicle y el enlace implícito de modelos de Laravel para encontrar vehículos por id y devolver 404 cuando no existen.
+
+Se creó `routes/api.php` con `Route::apiResource('vehicles', VehicleController::class)` y se registró ese archivo en bootstrap/app.php. Laravel aplica el prefijo /api y el grupo de middleware API. No fue necesario instalar paquetes adicionales.
+
+| Método | Endpoint | Acción | Respuesta correcta |
+| --- | --- | --- | --- |
+| GET | /api/vehicles | Listar vehículos ordenados por id | 200 |
+| GET | /api/vehicles/{vehicle} | Consultar por id | 200 |
+| POST | /api/vehicles | Registrar | 201 |
+| PUT o PATCH | /api/vehicles/{vehicle} | Actualizar | 200 |
+| DELETE | /api/vehicles/{vehicle} | Eliminar | 200 |
+
+### Validaciones y respuestas JSON
+
+Las validaciones se comparten en un método privado del controlador, sin capas adicionales:
+
+- user_id es requerido, entero y debe existir en users.
+- plate es requerida, de tipo string, máximo 255 caracteres y única en vehicles.
+- Al actualizar, la regla unique ignora únicamente el vehículo enlazado por Laravel; permite conservar su propia placa y rechaza la de otro vehículo.
+- brand, model y color son requeridos, de tipo string y máximo 255 caracteres.
+- Tanto PUT como PATCH requieren todos los campos indicados, conforme a las validaciones solicitadas para esta etapa.
+- Solo los datos validados se envían al modelo.
+
+Las consultas, la creación y la actualización devuelven `{ "data": ... }`. El listado contiene un arreglo, sin paginación adicional para este MVP escolar. La eliminación devuelve `{ "message": "Vehículo eliminado correctamente." }`.
+
+Laravel devuelve JSON con message y errors para validaciones (422), y message para registros no encontrados (404). Se conserva la configuración existente para responder JSON en /api/* incluso sin cabecera Accept.
+
+La eliminación respeta las claves foráneas ya existentes: si el vehículo tiene accesos asociados, devuelve 409 con un mensaje claro y conserva el registro, evitando una respuesta 500 por la restricción de SQLite. No se implementaron operaciones de accesos, disponibilidad, entradas, salidas ni pagos, ni se añadieron reglas de cobro o autenticación.
+
+### Rutas y pruebas realizadas
+
+Se ejecutaron los comandos dentro del mismo contenedor temporal composer:2 utilizado en las etapas anteriores:
+
+```bash
+php artisan route --no-interaction
+php artisan route:list --path=api/vehicles
+php artisan test
+```
+
+`php artisan route` mostró la ayuda y los subcomandos del espacio route (route:cache, route:clear y route:list). Para inspeccionar los endpoints se ejecutó route:list: **5 rutas registradas**, incluyendo GET|HEAD en las consultas y PUT|PATCH en la actualización, todas apuntando a VehicleController.
+
+Se añadió `tests/Feature/VehicleApiTest.php`, con RefreshDatabase y SQLite en memoria. Sus 13 pruebas cubren:
+
+1. Registro válido y persistencia con respuesta 201.
+2. Listado de vehículos.
+3. Consulta por id.
+4. Actualización PUT conservando la placa propia.
+5. Actualización PATCH cambiando la placa.
+6. Eliminación y comprobación de ausencia en la base.
+7. Rechazo de placa duplicada al registrar.
+8. Rechazo de campos obligatorios faltantes.
+9. Rechazo de user_id inexistente al registrar.
+10. Rechazo de la placa de otro vehículo al actualizar.
+11. Validaciones de campos obligatorios y usuario existente al actualizar.
+12. Respuestas 404 al consultar, actualizar o eliminar un vehículo inexistente; JSON incluso sin Accept en la consulta.
+13. Respuesta 409 al intentar eliminar un vehículo con registros asociados.
+
+Resultado de la suite completa: **20 pruebas aprobadas, 80 aserciones**, duración registrada 0.35 segundos. Incluye las siete pruebas de las etapas anteriores. No se modificaron migraciones ni se requirió reconstruir la base local para esta etapa.
+
+### Dificultades reales
+
+No hubo errores de implementación ni de pruebas. La única aclaración del comando solicitado fue que `php artisan route` presenta ayuda del espacio de comandos; se utilizó `php artisan route:list --path=api/vehicles` para verificar el registro efectivo de endpoints. Se continuó usando Docker porque PHP no está instalado de forma nativa en el entorno, como ya se documentó.
+
+### Revisión de Git
+
+Se revisaron git status, los cambios y los archivos preparados para el commit. `.env`, la base SQLite local y vendor permanecen ignorados, sin archivos sensibles versionados.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Http/Controllers/VehicleController.php routes/api.php bootstrap/app.php tests/Feature/VehicleApiTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: implementar API de vehículos"
+git status --short
+```
