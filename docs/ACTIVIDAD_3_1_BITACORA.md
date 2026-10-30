@@ -548,3 +548,95 @@ git diff --cached --name-only
 git commit -m "test: validar flujo integral del Backend"
 git status --short
 ```
+
+## Etapa 7. Autenticación básica
+
+Fecha: 30 de octubre de 2026.
+
+### Mecanismo y alcance
+
+Se instaló Laravel Sanctum 4.3.3 y se añadió HasApiTokens al modelo User. Se utiliza autenticación API mediante tokens personales Bearer, sin sesiones SPA ni servicios externos. Se creó AuthController y se publicó la migración estándar de Sanctum para personal_access_tokens, aplicada correctamente en SQLite (lote 2). Las siete migraciones del proyecto aparecen aplicadas.
+
+La autenticación básica implementada es suficiente para demostrar el Backend del MVP en esta actividad. No se desarrolló un sistema avanzado de roles y permisos porque excedería el alcance y tiempo de la actividad escolar.
+
+Se protegen únicamente /api/user y /api/logout con auth:sanctum. Las rutas existentes de vehículos, accesos, disponibilidad y pagos conservan el acceso anterior, según lo permitido en la consigna, evitando introducir autorización por usuario o modificar las pruebas y contratos de esos módulos.
+
+### Endpoints y respuestas
+
+| Método | Endpoint | Función | Respuesta correcta |
+| --- | --- | --- | --- |
+| POST | /api/register | Registrar usuario y emitir token | 201 |
+| POST | /api/login | Verificar credenciales y emitir token | 200 |
+| GET | /api/user | Consultar usuario autenticado | 200 |
+| POST | /api/logout | Revocar el token actual | 200 |
+
+Registro y login devuelven data con el usuario, token y token_type Bearer. El cliente utiliza `Authorization: Bearer <token>` para consultar /api/user y cerrar sesión. La consulta devuelve data; logout devuelve un mensaje JSON en español. Logout elimina únicamente el token de esa petición; otros tokens del usuario permanecen válidos.
+
+Los tokens completos se entregan al cliente al emitirlos. Sanctum almacena el hash del secreto del token en la base; no se registra el token completo en archivos del proyecto.
+
+### Validaciones y contraseñas
+
+- Registro: name requerido, string y máximo 255; email requerido, formato válido, máximo 255 y único; password requerido, string y mínimo 8 caracteres (máximo 255).
+- Login: email requerido y válido; password requerido y string.
+- Las credenciales se verifican con Hash::check. Usuario inexistente y contraseña incorrecta reciben el mismo mensaje genérico con estado 422, sin emitir tokens.
+- Datos inválidos o correo duplicado: 422 con message y errors.
+- Sin token o con token inválido/revocado en rutas protegidas: 401 en JSON, incluso sin cabecera Accept.
+
+El cast hashed ya presente en User aplica el hash de contraseña de Laravel. Se conserva la configuración estándar de hashing y los atributos ocultos password y remember_token, que no aparecen en las respuestas JSON. El registro crea usuario y token dentro de una transacción.
+
+### Instalación y comandos
+
+Se utilizó el entorno temporal Docker ya preparado. Se añadió únicamente Sanctum, sin actualizar las otras dependencias:
+
+```bash
+composer require laravel/sanctum --no-install --no-scripts --no-interaction
+composer install --no-interaction --prefer-dist
+php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider" --tag=sanctum-migrations
+php artisan migrate --no-interaction
+php artisan test --compact
+php artisan migrate:status
+php artisan route --no-interaction
+php artisan route:list --path=api -v
+```
+
+Para descargar Sanctum se reutilizó la adaptación temporal ya documentada para esta red: la URL de su distribución se cambió localmente de api.github.com a codeload.github.com, conservando la referencia exacta. Después de instalar se restauró el composer.lock original generado por Composer, antes de las comprobaciones finales. No se intentó de nuevo la descarga bloqueada ni se deshabilitó TLS.
+
+### Pruebas y rutas
+
+Se añadió AuthApiTest con diez pruebas, usando tokens Bearer reales emitidos por Sanctum:
+
+1. Registro válido, hash de contraseña y token utilizable.
+2. Rechazo de email duplicado sin emitir tokens.
+3. Rechazo de datos incompletos.
+4. Rechazo de email inválido y contraseña corta.
+5. Login correcto con token utilizable.
+6. Rechazo de contraseña incorrecta y usuario inexistente, sin emitir tokens.
+7. Rechazo de login sin credenciales.
+8. Consulta del usuario autenticado sin exponer password ni remember_token.
+9. Rechazo de acceso sin token o con token inválido y de logout sin autenticar.
+10. Logout válido, revocación efectiva y conservación de otro token del mismo usuario.
+
+En la prueba de revocación se resuelven nuevamente los guards entre peticiones para representar peticiones HTTP independientes, sin reutilizar el usuario almacenado en memoria por el guard durante la prueba.
+
+Resultado final de toda la suite: **55 pruebas aprobadas, 287 aserciones**, duración registrada 0.69 segundos. Las 45 pruebas previas siguen aprobando, incluido el flujo integral y estacionamiento lleno.
+
+route mostró la ayuda del espacio de comandos. route:list confirmó **17 rutas API**, incluyendo las cuatro nuevas, y mostró auth:sanctum únicamente en /api/user y /api/logout.
+
+### Dificultad real y solución
+
+La primera ejecución detectó un fallo al consultar /api/user sin token y sin Accept: el middleware estándar intentaba construir una redirección a una ruta web login inexistente. Se configuró redirectGuestsTo en bootstrap/app.php para no generar redirección web en /api/*, conservando la respuesta JSON configurada para la API. La petición pasó a devolver 401 y la suite completa aprobó. No se añadió una pantalla ni una ruta de login web.
+
+### Revisión de Git
+
+Se revisan únicamente el controlador, el trait de User, la configuración de respuesta de autenticación, rutas, migración de Sanctum, dependencia y lock, pruebas y esta bitácora. `.env`, SQLite local, vendor y tokens reales permanecen fuera del control de versiones.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Http/Controllers/AuthController.php app/Models/User.php bootstrap/app.php composer.json composer.lock routes/api.php database/migrations/*_create_personal_access_tokens_table.php tests/Feature/AuthApiTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: implementar autenticación básica"
+git status --short
+```
