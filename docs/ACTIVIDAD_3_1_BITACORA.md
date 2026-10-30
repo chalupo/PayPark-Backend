@@ -464,3 +464,87 @@ git diff --cached --name-only
 git commit -m "feat: implementar módulo de pagos"
 git status --short
 ```
+
+## Etapa 6. Pruebas integrales y revisión final
+
+Fecha: 30 de octubre de 2026.
+
+### Flujo integral probado
+
+Se añadió `tests/Feature/BackendIntegrationTest.php`, sin modificar la lógica de producción. La prueba crea un usuario mediante la factory estándar y ejecuta, a través de las rutas JSON existentes, todo el flujo solicitado:
+
+1. Registrar el vehículo asociado al usuario.
+2. Consultar disponibilidad inicial: 50 espacios, cero ocupados.
+3. Registrar la entrada y verificar status active y exit_at null.
+4. Confirmar disponibilidad de 49 espacios.
+5. Rechazar una segunda entrada con 409 y conservar un único acceso.
+6. Avanzar el reloj de prueba y registrar salida del mismo acceso, con status closed.
+7. Confirmar que vuelven a estar disponibles los 50 espacios.
+8. Rechazar otra salida con 409.
+9. Registrar un pago asociado al acceso cerrado.
+10. Rechazar otro pago del mismo acceso con 422, conservando el pago original.
+11. Consultar el pago por id y comprobar importe y relación.
+12. Consultar listados de accesos y pagos y comprobar el historial cerrado y su pago.
+13. Confirmar que pagar no cambia la disponibilidad ni reabre el acceso.
+
+Se ejecutó también la prueba existente de estacionamiento lleno: con 50 accesos activos devuelve cero espacios, rechaza otra entrada y permite ingresar cuando una salida libera un lugar. Está incluida en ambas ejecuciones completas de esta etapa.
+
+### Pruebas, validaciones y migraciones
+
+Primero se ejecutó la suite completa con la configuración normal de pruebas (SQLite en memoria): **45 pruebas aprobadas y 230 aserciones**, en 0.61 segundos.
+
+Para verificar además el arranque desde una base limpia se creó un archivo SQLite vacío y separado en el directorio de trabajo temporal, fuera del repositorio. No se eliminó ni sobrescribió la base local del proyecto. Se pasó únicamente al contenedor de validación la variable DB_DATABASE=/app/work/paypark-final-validation.sqlite.
+
+En ese mismo entorno se ejecutó:
+
+```bash
+php artisan migrate --no-interaction
+php artisan migrate:status
+php artisan test --compact
+```
+
+migrate creó la tabla de control y aplicó correctamente las **6 migraciones** (usuarios, cache, jobs, vehículos, accesos y pagos). migrate:status confirmó las seis como [1] Ran, sin pendientes.
+
+La suite posterior a migrate terminó nuevamente con **45 pruebas aprobadas y 230 aserciones**, en 0.64 segundos. La variable DB_DATABASE externa se mantuvo para esta segunda ejecución, por lo que se verificó SQLite en archivo además de SQLite en memoria. RefreshDatabase administra el esquema y las transacciones de aislamiento de las pruebas; no se utilizaron datos de la base local.
+
+Las pruebas verifican las validaciones de vehículos, relaciones Eloquent, placas únicas, existencia de usuarios/vehículos/accesos, capacidad máxima, duplicados activos, salida sin entrada, montos positivos, campos obligatorios y un solo pago por acceso. También verifican códigos 200, 201, 404, 409 y 422 según la operación.
+
+### Revisión de rutas
+
+Se ejecutó `php artisan route --no-interaction`, que muestra ayuda de los subcomandos y devuelve código 1 al no indicar una operación concreta. Por ello se ejecutó por separado:
+
+```bash
+php artisan route:list --path=api
+```
+
+Se confirmaron **13 rutas API**: cinco de vehículos, cuatro de accesos, una de disponibilidad y tres de pagos. Los métodos GET|HEAD, POST, PUT|PATCH y DELETE corresponden a las acciones implementadas. No se añadieron nuevas rutas en esta etapa.
+
+### Revisión de seguridad y repositorio
+
+- `.env` no está versionado y está ignorado.
+- `.env.example` existe y mantiene APP_KEY y credenciales vacías; utiliza SQLite.
+- La base SQLite local, sus archivos auxiliares y el archivo temporal de validación no están versionados.
+- Se revisaron los archivos versionados y patrones de claves privadas, tokens y claves APP_KEY reales; no se detectaron credenciales ni secretos. Los ejemplos y valores de factory son datos de demostración.
+- `.gitignore` excluye configuración local, vendor, node_modules, logs, cachés, archivos de claves y SQLite.
+- El único archivo nuevo de código es la prueba integral; no hay archivos temporales innecesarios dentro del conjunto versionado ni archivos nuevos sin seguimiento ajenos a la actividad. Los archivos de trabajo de validación se mantuvieron fuera del repositorio.
+- Se revisaron las referencias de controladores, modelos, relaciones, rutas y pruebas; no se encontró código propio abandonado o sin referencias que requiriera eliminarse.
+- No se añadieron dependencias. Se conservaron las herramientas estándar de Laravel de instalación, desarrollo y pruebas (incluyendo Tinker, Pail, Pao, Pint, PHPUnit y las herramientas de assets de la plantilla). Son herramientas opcionales de desarrollo; el flujo API y estas verificaciones no requieren Node ni compilar assets. No se añadió Vue, autenticación, Docker adicional ni infraestructura nueva.
+
+### Dificultades y correcciones
+
+No se encontraron errores en el flujo integral, migraciones ni pruebas. No fue necesario corregir código de producción. Se utilizó route:list por separado después de la ayuda y el código de salida de route, conforme al comportamiento ya observado en etapas anteriores.
+
+### Cierre
+
+Se añadió una prueba integral y esta documentación. El resultado valida el Backend dentro del alcance de la actividad escolar; no se incorporaron funcionalidades adicionales.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add tests/Feature/BackendIntegrationTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "test: validar flujo integral del Backend"
+git status --short
+```
