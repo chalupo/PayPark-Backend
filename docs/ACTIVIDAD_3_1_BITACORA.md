@@ -289,3 +289,97 @@ git diff --cached --name-only
 git commit -m "feat: implementar API de vehículos"
 git status --short
 ```
+
+## Etapa 4. Control de entradas, salidas y disponibilidad
+
+Fecha: 30 de octubre de 2026.
+
+### Controlador y endpoints
+
+Se creó `AccessController`, reutilizando los modelos Access y Vehicle. La lógica permanece en el controlador, sin servicios adicionales ni nuevas dependencias. Se añadieron a routes/api.php:
+
+| Método | Endpoint | Función |
+| --- | --- | --- |
+| GET | /api/accesses | Listar accesos ordenados por id |
+| GET | /api/accesses/{access} | Consultar un acceso por id |
+| POST | /api/accesses/entry | Registrar entrada con vehicle_id en el JSON |
+| POST | /api/accesses/{vehicle}/exit | Registrar salida del vehículo indicado por id |
+| GET | /api/availability | Consultar capacidad, ocupación y disponibilidad |
+
+Se conservaron las rutas sugeridas y se añadió la consulta individual para revisar el historial. En la ruta de salida el identificador es el del vehículo; en la consulta individual es el del acceso.
+
+### Disponibilidad y reglas de negocio
+
+La capacidad fija se define una sola vez como constante CAPACITY = 50 en AccessController. Cada consulta calcula occupied contando únicamente accesos con status active y available como 50 menos occupied. No se almacena ni se actualiza manualmente un contador de espacios.
+
+Ejemplo de respuesta de GET /api/availability con tres accesos activos:
+
+```json
+{"capacity":50,"occupied":3,"available":47}
+```
+
+Una entrada válida guarda la hora del servidor en entry_at, status active y exit_at null. Se rechaza con 409 si el vehículo ya tiene una entrada activa o si existen 50 o más accesos activos. Los campos de estado y fecha enviados por el cliente no se utilizan.
+
+Una salida busca el acceso activo del vehículo y guarda exit_at con la hora del servidor y status closed. Si no existe una entrada activa devuelve 409. Una segunda salida no modifica el historial. Un vehículo puede volver a ingresar después de cerrar su acceso anterior.
+
+Las entradas y salidas utilizan DB::transaction. En la configuración SQLite se establece transaction_mode IMMEDIATE y busy_timeout 5000 ms para adquirir el bloqueo de escritura antes de consultar capacidad y duplicados y permitir la espera por otra escritura breve. Así las operaciones de esta API comprueban y escriben dentro de una misma transacción, sin añadir infraestructura. Esta decisión corresponde al motor SQLite de esta implementación; no se realizó una prueba de carga ni se garantiza espera ilimitada ante bloqueos.
+
+### Validaciones y respuestas
+
+- La entrada requiere vehicle_id entero y existente: 422 con message y errors si falta o es inválido.
+- La salida utiliza enlace de modelo Vehicle: 404 si no existe el vehículo.
+- La consulta individual utiliza enlace de modelo Access: 404 si no existe el acceso.
+- Duplicado activo, estacionamiento lleno y salida sin entrada activa devuelven 409 con un mensaje JSON en español.
+- Entrada correcta: 201 con data del acceso creado.
+- Salida, listado, consulta y disponibilidad correctos: 200. Las operaciones de acceso devuelven data; disponibilidad devuelve directamente capacity, occupied y available.
+
+No se modificó el módulo de pagos ni se añadieron migraciones para esta etapa.
+
+### Pruebas y rutas
+
+Se creó AccessApiTest con RefreshDatabase y SQLite en memoria. Sus 11 pruebas cubren:
+
+1. Entrada válida, status active, exit_at null y hora asignada por el servidor.
+2. Reducción automática de disponibilidad después de entrar.
+3. Rechazo de entrada activa duplicada, sin crear otro registro.
+4. Salida válida, status closed y fecha de salida posterior a la entrada.
+5. Incremento de disponibilidad después de salir.
+6. Rechazo de salida sin entrada activa.
+7. Rechazo al alcanzar 50 accesos activos y admisión después de liberar un espacio.
+8. Respuesta exacta de disponibilidad, contando activos y excluyendo cerrados.
+9. Validación de vehículo requerido y existente; 404 en salida para vehículo inexistente.
+10. Listado, consulta individual y 404 para acceso inexistente.
+11. Rechazo de salida repetida sin alterar su fecha y posibilidad de un nuevo ingreso.
+
+El estacionamiento lleno se preparó directamente en la prueba creando 50 vehículos con accesos activos; no se añadió código de producción para generar esos datos.
+
+Comandos ejecutados con el contenedor temporal composer:2 utilizado anteriormente:
+
+```bash
+php artisan route --no-interaction
+php artisan route:list --path=api
+php artisan test
+```
+
+route presentó los subcomandos disponibles, como en la etapa anterior. route:list confirmó **10 rutas API: 5 existentes de vehículos y 5 nuevas**, asociadas a los métodos esperados.
+
+La suite completa finalizó con **31 pruebas aprobadas y 135 aserciones**, duración registrada de 0.49 segundos. Incluye las 20 pruebas anteriores.
+
+### Dificultad real y solución
+
+En la primera ejecución fallaron dos comparaciones de fechas: el reloj congelado conservaba microsegundos, mientras que los campos datetime se guardan con precisión de segundos. Se ajustó el reloj de esas pruebas con travelTo(now()->startOfSecond()), conservando las comprobaciones exactas del tiempo del servidor. Después se volvió a ejecutar toda la suite y las 31 pruebas aprobaron. No fue necesario cambiar el almacenamiento de fechas ni las reglas de negocio.
+
+### Revisión y commit
+
+Se revisaron los cambios y las exclusiones antes de preparar el commit. `.env`, bases SQLite locales, vendor y logs continúan fuera del control de versiones.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Http/Controllers/AccessController.php config/database.php routes/api.php tests/Feature/AccessApiTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: implementar control de accesos y disponibilidad"
+git status --short
+```

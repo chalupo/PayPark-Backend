@@ -38,10 +38,11 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
+            'busy_timeout' => 5000,
             'journal_mode' => null,
             'synchronous' => null,
-            'transaction_mode' => 'DEFERRED',
+            // Serializa las escrituras antes de comprobar capacidad y duplicados.
+            'transaction_mode' => 'IMMEDIATE',
         ],
 
         'mysql' => [
