@@ -1,0 +1,675 @@
+# Actividad 3.1 — Bitácora de desarrollo de PayPark Backend
+
+Fecha: 30 de octubre de 2026.
+Materia: Proyecto VIII, Licenciatura en Desarrollo de Sistemas Web.
+
+Esta bitácora es cronológica: los alcances, cantidades de pruebas y rutas de cada etapa describen el resultado en ese momento. El cierre actual comprende siete migraciones, 55 pruebas, 287 aserciones y 17 rutas API.
+
+## Etapa 1. Inicialización de Laravel y configuración de SQLite
+
+### Preparación y alcance
+
+El repositorio original contenía únicamente `README.md`, con el título `# PayPark-Backend`, y estaba limpio. Se conservó ese contenido y se añadieron instrucciones de instalación y verificación. No había instrucciones locales AGENTS.md antes de la inicialización.
+
+Se instaló la plantilla oficial `laravel/laravel` v13.11.0, con Laravel Framework 13.39.0 resuelto en `composer.lock`. Se mantuvieron la estructura, las migraciones y las dos pruebas estándar. En esta primera etapa no se implementaron vehículos, accesos, pagos, autenticación adicional ni reglas de negocio. La comunicación REST/JSON y el frontend futuro Vue.js permanecen como contexto del proyecto; no se desarrollaron en esta primera etapa.
+
+Se omitieron los archivos de mantenimiento de la distribución de Laravel (`.github/`, CHANGELOG.md, .styleci.yml e instrucciones genéricas AGENTS.md/CLAUDE.md). No se añadió Boost ni infraestructura adicional al proyecto académico.
+
+### Herramientas y dificultades del entorno
+
+El entorno Debian 13 no tenía PHP ni Composer (`command not found`). No había sudo y la instalación de paquetes del sistema no estaba permitida. Se utilizó Docker como herramienta temporal de ejecución, sin añadir Docker como requisito del proyecto.
+
+Imagen utilizada: `composer:2`, digest `sha256:4ed71c38c6d788eb4e4e3747b5332f5b40d5b5a6fcadd5062a1a70986a118e0a`.
+
+- PHP CLI: 8.5.12, con PDO SQLite y sqlite3 disponibles.
+- Composer: 2.11.1.
+- Laravel Framework: 13.39.0.
+- El lock generado requiere PHP 8.4.1 o superior por las dependencias resueltas; se verificó con 8.5.12.
+
+La descarga por defecto de Composer falló con HTTP 403 porque `api.github.com` no está habilitado en la política de red. El intento `--prefer-source` descargaba el historial completo y se interrumpió para usar una clonación superficial de la etiqueta oficial. Las distribuciones de dependencias se obtuvieron de `codeload.github.com`, permitido por el entorno, conservando repositorios y referencias exactas. Solo durante la instalación se cambiaron las URLs de distribución del lock y después se restauró el lock original de Composer. No se deshabilitó TLS ni se almacenaron credenciales o certificados del entorno en el repositorio.
+
+### Elección de SQLite y cambio de planeación
+
+En la planeación original se contemplaba una base de datos como MySQL; se utilizó SQLite en lugar de esa configuración. Para esta implementación académica se decidió utilizar SQLite para reducir configuración y dependencias externas y facilitar una demostración del MVP en el tiempo disponible.
+
+SQLite mantiene una base de datos relacional real y se siguen utilizando migraciones y relaciones de Laravel. Este cambio no modifica las reglas de negocio ni la arquitectura lógica del Backend: se mantiene Laravel, la futura API REST/JSON y la separación del frontend Vue.js. La metodología prevista continúa siendo Scrum.
+
+Se configuró `APP_NAME=PayPark` y `DB_CONNECTION=sqlite` en `.env.example`. `DB_DATABASE` queda sin definir para que Laravel utilice `database_path('database.sqlite')`, sin rutas absolutas del entorno. Se creó localmente `database/database.sqlite` con `touch`. `.env` contiene una clave generada localmente y no se versiona; `.env.example` mantiene `APP_KEY` vacía.
+
+### Comandos utilizados
+
+Inspección inicial:
+
+```bash
+pwd
+rg --files
+git status --short
+php -v
+composer --version
+```
+
+Los comandos PHP y Composer posteriores se ejecutaron en un contenedor temporal con el repositorio montado en `/app/PayPark-Backend`. Para descargas se montó el certificado CA del entorno en modo lectura y se usaron `COMPOSER_CAFILE` y `GIT_SSL_CAINFO`, manteniendo el proxy configurado.
+
+Preparación de la plantilla y dependencias:
+
+```bash
+# Intentos iniciales, afectados por las restricciones descritas:
+composer create-project laravel/laravel work/laravel --no-interaction
+composer create-project laravel/laravel work/laravel --prefer-source --no-interaction
+
+# Plantilla finalmente utilizada, fuera del repositorio:
+git clone --depth 1 --branch v13.11.0 https://github.com/laravel/laravel.git work/laravel
+# Se retiró el .git de la copia temporal y se integró la plantilla,
+# restaurando README.md desde el commit original.
+composer update --no-install --no-scripts --no-interaction
+```
+
+Adaptación temporal para instalar en esta red:
+
+```python
+# Sobre una copia local de composer.lock, respaldando primero el original:
+# Para cada paquete de packages y packages-dev se sustituyó únicamente:
+# https://api.github.com/repos/OWNER/REPO/zipball/REFERENCE
+# por https://codeload.github.com/OWNER/REPO/zip/REFERENCE
+# Las versiones y referencias no cambiaron.
+```
+
+```bash
+git config --global --add safe.directory /app/PayPark-Backend
+composer install --no-interaction --prefer-dist
+# Se restauró composer.lock original antes de las comprobaciones finales.
+```
+
+Configuración y validación, desde la raíz del proyecto:
+
+```bash
+cp .env.example .env
+touch database/database.sqlite
+php artisan key:generate --no-interaction
+php artisan migrate --no-interaction
+php artisan test
+php artisan about
+php artisan migrate:status
+composer check-platform-reqs
+composer validate --no-check-publish
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git status --short
+git diff --check
+git add .
+git diff --cached --name-only
+git commit -m "chore: initialize Laravel backend with SQLite"
+git status --short
+```
+
+### Resultado de migraciones
+
+`php artisan migrate --no-interaction` terminó correctamente y creó la tabla de control de migraciones. Se aplicaron las tres migraciones estándar:
+
+| Migración | Lote | Estado |
+| --- | --- | --- |
+| 0001_01_01_000000_create_users_table | 1 | Ran |
+| 0001_01_01_000001_create_cache_table | 1 | Ran |
+| 0001_01_01_000002_create_jobs_table | 1 | Ran |
+
+`php artisan migrate:status` confirmó estos tres estados sin migraciones pendientes. No se añadieron migraciones propias.
+
+### Resultado de pruebas y diagnóstico
+
+`php artisan test`: **2 pruebas aprobadas, 2 aserciones**, duración 0.16 s:
+
+- Tests\Unit\ExampleTest: that true is true.
+- Tests\Feature\ExampleTest: the application returns a successful response.
+
+`php artisan about` finalizó correctamente: aplicación PayPark, Laravel 13.39.0, PHP 8.5.12, Composer 2.11.1, entorno local y controlador de base de datos sqlite. Cache, sesiones y colas utilizan las tablas estándar de la base local. El modo debug está habilitado para desarrollo local.
+
+`composer check-platform-reqs` aprobó todos los requisitos y `composer validate --no-check-publish` confirmó que composer.json es válido.
+
+### Revisión de Git
+
+`.gitignore` excluye `.env`, variantes locales de configuración (exceptuando `.env.example`), bases SQLite, vendor, node_modules, logs, claves de storage, cachés y artefactos de compilación. Los directorios de almacenamiento conservan los .gitignore estándar de Laravel.
+
+Se revisó el índice (58 archivos) antes del commit para confirmar que solo contiene código, configuración de ejemplo, lock de dependencias y documentación; sin `.env`, bases locales, credenciales ni dependencias instaladas. Se retiraron tres espacios finales de líneas vacías de la vista estándar detectados por git diff --cached --check. El commit de esta etapa utiliza el mensaje `chore: initialize Laravel backend with SQLite`.
+
+
+## Etapa 2. Diseño e implementación del modelo de datos
+
+Fecha: 30 de octubre de 2026.
+
+### Modelos y migraciones
+
+Se crearon los modelos Eloquent `Vehicle`, `Access` y `Payment`, con asignación masiva limitada a sus campos y timestamps estándar. Se mantuvo el modelo `User` de Laravel y se agregó únicamente `vehicles()`; no se añadió role porque esta etapa no requiere permisos.
+
+Se añadieron estas migraciones, en orden de dependencia:
+
+- `2026_10_30_000001_create_vehicles_table`: id, user_id, plate única, brand, model, color y timestamps.
+- `2026_10_30_000002_create_accesses_table`: id, vehicle_id, entry_at, exit_at nullable, status y timestamps.
+- `2026_10_30_000003_create_payments_table`: id, access_id único, amount, paid_at, status y timestamps.
+
+Todas incluyen clave primaria y clave foránea hacia su registro padre. Se conserva el comportamiento restrictivo predeterminado al borrar un padre con registros asociados, sin borrados en cascada. Las migraciones incluyen down() para eliminar sus tablas en una reversión.
+
+### Relaciones establecidas
+
+| Relación | Método en el padre | Método inverso |
+| --- | --- | --- |
+| Usuario tiene varios vehículos | User::vehicles() — HasMany | Vehicle::user() — BelongsTo |
+| Vehículo tiene varios accesos | Vehicle::accesses() — HasMany | Access::vehicle() — BelongsTo |
+| Acceso tiene un pago | Access::payment() — HasOne | Payment::access() — BelongsTo |
+
+### Decisiones
+
+- La placa es obligatoria y única en la base de datos; no se implementó normalización de placas.
+- Los accesos permiten únicamente `active` y `closed`, con `active` como valor predeterminado; la migración enum genera la restricción correspondiente en SQLite.
+- exit_at puede permanecer null. entry_at, exit_at y paid_at se convierten a datetime en Eloquent.
+- access_id es único en payments para asegurar como máximo un pago por acceso, incluso al insertar directamente en la base.
+- amount utiliza decimal(10, 2) y cast decimal:2 en Eloquent. No se añadieron cálculos de tarifas ni reglas de cobro. SQLite conserva su tipado numérico habitual; la declaración decimal no añade por sí sola precisión fija al motor.
+- Payment::status es una cadena obligatoria; las pruebas usan `paid`. No se añadieron un flujo de estados de pago ni pasarelas reales.
+- No se añadieron controladores ni endpoints API.
+
+### Ejecución de migraciones y pruebas
+
+Se confirmó que la base local no contenía usuarios antes de reconstruirla. Se utilizaron las dependencias ya instaladas y el contenedor temporal composer:2 de la etapa anterior para ejecutar PHP, sin modificar las dependencias del proyecto.
+
+```bash
+php artisan migrate:fresh --no-interaction
+php artisan migrate:status
+php artisan test
+```
+
+Resultado de migrate:fresh: **6 migraciones aplicadas correctamente**, las tres estándar y las tres nuevas. migrate:status confirmó las seis como **[1] Ran**, sin pendientes.
+
+Se creó `tests/Feature/PayParkDataModelTest.php` con RefreshDatabase y SQLite en memoria. Sus cinco pruebas verifican:
+
+1. Creación de usuario, asociación de dos vehículos, dos accesos y un pago; persistencia y relaciones Eloquent en ambos sentidos; fechas, estado predeterminado y salida nullable.
+2. Rechazo de una placa duplicada, incluso para otro usuario.
+3. Rechazo de un segundo pago para el mismo acceso.
+4. Rechazo de un vehículo con usuario inexistente por clave foránea.
+5. Rechazo de un estado de acceso fuera de active/closed.
+
+La suite completa terminó con **7 pruebas aprobadas y 24 aserciones**, incluyendo las dos pruebas originales. Duración registrada: 0.28 segundos.
+
+### Dificultades reales
+
+No se encontraron errores de migraciones ni de pruebas durante esta etapa. Se reutilizó Docker por la ausencia de PHP nativo ya documentada en la etapa 1; no fue necesario descargar nuevas dependencias ni resolver nuevos problemas de red.
+
+### Revisión y commit
+
+Se revisaron git status, los cambios y las exclusiones de archivos sensibles. `.env`, la base SQLite local, vendor y logs permanecen fuera del índice. Se conserva `.env.example` sin secretos.
+
+Comandos de cierre:
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Models database/migrations tests/Feature/PayParkDataModelTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: crear modelos y relaciones principales de PayPark"
+git status --short
+```
+
+## Etapa 3. Desarrollo de la API de vehículos
+
+Fecha: 30 de octubre de 2026.
+
+### Controlador y rutas
+
+Se creó `app/Http/Controllers/VehicleController.php` con los métodos index, store, show, update y destroy. Se reutiliza el modelo Vehicle y el enlace implícito de modelos de Laravel para encontrar vehículos por id y devolver 404 cuando no existen.
+
+Se creó `routes/api.php` con `Route::apiResource('vehicles', VehicleController::class)` y se registró ese archivo en bootstrap/app.php. Laravel aplica el prefijo /api y el grupo de middleware API. No fue necesario instalar paquetes adicionales.
+
+| Método | Endpoint | Acción | Respuesta correcta |
+| --- | --- | --- | --- |
+| GET | /api/vehicles | Listar vehículos ordenados por id | 200 |
+| GET | /api/vehicles/{vehicle} | Consultar por id | 200 |
+| POST | /api/vehicles | Registrar | 201 |
+| PUT o PATCH | /api/vehicles/{vehicle} | Actualizar | 200 |
+| DELETE | /api/vehicles/{vehicle} | Eliminar | 200 |
+
+### Validaciones y respuestas JSON
+
+Las validaciones se comparten en un método privado del controlador, sin capas adicionales:
+
+- user_id es requerido, entero y debe existir en users.
+- plate es requerida, de tipo string, máximo 255 caracteres y única en vehicles.
+- Al actualizar, la regla unique ignora únicamente el vehículo enlazado por Laravel; permite conservar su propia placa y rechaza la de otro vehículo.
+- brand, model y color son requeridos, de tipo string y máximo 255 caracteres.
+- Tanto PUT como PATCH requieren todos los campos indicados, conforme a las validaciones solicitadas para esta etapa.
+- Solo los datos validados se envían al modelo.
+
+Las consultas, la creación y la actualización devuelven `{ "data": ... }`. El listado contiene un arreglo, sin paginación adicional para este MVP escolar. La eliminación devuelve `{ "message": "Vehículo eliminado correctamente." }`.
+
+Laravel devuelve JSON con message y errors para validaciones (422), y message para registros no encontrados (404). Se conserva la configuración existente para responder JSON en /api/* incluso sin cabecera Accept.
+
+La eliminación respeta las claves foráneas ya existentes: si el vehículo tiene accesos asociados, devuelve 409 con un mensaje claro y conserva el registro, evitando una respuesta 500 por la restricción de SQLite. No se implementaron operaciones de accesos, disponibilidad, entradas, salidas ni pagos, ni se añadieron reglas de cobro o autenticación.
+
+### Rutas y pruebas realizadas
+
+Se ejecutaron los comandos dentro del mismo contenedor temporal composer:2 utilizado en las etapas anteriores:
+
+```bash
+php artisan route --no-interaction
+php artisan route:list --path=api/vehicles
+php artisan test
+```
+
+`php artisan route` mostró la ayuda y los subcomandos del espacio route (route:cache, route:clear y route:list). Para inspeccionar los endpoints se ejecutó route:list: **5 rutas registradas**, incluyendo GET|HEAD en las consultas y PUT|PATCH en la actualización, todas apuntando a VehicleController.
+
+Se añadió `tests/Feature/VehicleApiTest.php`, con RefreshDatabase y SQLite en memoria. Sus 13 pruebas cubren:
+
+1. Registro válido y persistencia con respuesta 201.
+2. Listado de vehículos.
+3. Consulta por id.
+4. Actualización PUT conservando la placa propia.
+5. Actualización PATCH cambiando la placa.
+6. Eliminación y comprobación de ausencia en la base.
+7. Rechazo de placa duplicada al registrar.
+8. Rechazo de campos obligatorios faltantes.
+9. Rechazo de user_id inexistente al registrar.
+10. Rechazo de la placa de otro vehículo al actualizar.
+11. Validaciones de campos obligatorios y usuario existente al actualizar.
+12. Respuestas 404 al consultar, actualizar o eliminar un vehículo inexistente; JSON incluso sin Accept en la consulta.
+13. Respuesta 409 al intentar eliminar un vehículo con registros asociados.
+
+Resultado de la suite completa: **20 pruebas aprobadas, 80 aserciones**, duración registrada 0.35 segundos. Incluye las siete pruebas de las etapas anteriores. No se modificaron migraciones ni se requirió reconstruir la base local para esta etapa.
+
+### Dificultades reales
+
+No hubo errores de implementación ni de pruebas. La única aclaración del comando solicitado fue que `php artisan route` presenta ayuda del espacio de comandos; se utilizó `php artisan route:list --path=api/vehicles` para verificar el registro efectivo de endpoints. Se continuó usando Docker porque PHP no está instalado de forma nativa en el entorno, como ya se documentó.
+
+### Revisión de Git
+
+Se revisaron git status, los cambios y los archivos preparados para el commit. `.env`, la base SQLite local y vendor permanecen ignorados, sin archivos sensibles versionados.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Http/Controllers/VehicleController.php routes/api.php bootstrap/app.php tests/Feature/VehicleApiTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: implementar API de vehículos"
+git status --short
+```
+
+## Etapa 4. Control de entradas, salidas y disponibilidad
+
+Fecha: 30 de octubre de 2026.
+
+### Controlador y endpoints
+
+Se creó `AccessController`, reutilizando los modelos Access y Vehicle. La lógica permanece en el controlador, sin servicios adicionales ni nuevas dependencias. Se añadieron a routes/api.php:
+
+| Método | Endpoint | Función |
+| --- | --- | --- |
+| GET | /api/accesses | Listar accesos ordenados por id |
+| GET | /api/accesses/{access} | Consultar un acceso por id |
+| POST | /api/accesses/entry | Registrar entrada con vehicle_id en el JSON |
+| POST | /api/accesses/{vehicle}/exit | Registrar salida del vehículo indicado por id |
+| GET | /api/availability | Consultar capacidad, ocupación y disponibilidad |
+
+Se conservaron las rutas sugeridas y se añadió la consulta individual para revisar el historial. En la ruta de salida el identificador es el del vehículo; en la consulta individual es el del acceso.
+
+### Disponibilidad y reglas de negocio
+
+La capacidad fija se define una sola vez como constante CAPACITY = 50 en AccessController. Cada consulta calcula occupied contando únicamente accesos con status active y available como 50 menos occupied. No se almacena ni se actualiza manualmente un contador de espacios.
+
+Ejemplo de respuesta de GET /api/availability con tres accesos activos:
+
+```json
+{"capacity":50,"occupied":3,"available":47}
+```
+
+Una entrada válida guarda la hora del servidor en entry_at, status active y exit_at null. Se rechaza con 409 si el vehículo ya tiene una entrada activa o si existen 50 o más accesos activos. Los campos de estado y fecha enviados por el cliente no se utilizan.
+
+Una salida busca el acceso activo del vehículo y guarda exit_at con la hora del servidor y status closed. Si no existe una entrada activa devuelve 409. Una segunda salida no modifica el historial. Un vehículo puede volver a ingresar después de cerrar su acceso anterior.
+
+Las entradas y salidas utilizan DB::transaction. En la configuración SQLite se establece transaction_mode IMMEDIATE y busy_timeout 5000 ms para adquirir el bloqueo de escritura antes de consultar capacidad y duplicados y permitir la espera por otra escritura breve. Así las operaciones de esta API comprueban y escriben dentro de una misma transacción, sin añadir infraestructura. Esta decisión corresponde al motor SQLite de esta implementación; no se realizó una prueba de carga ni se garantiza espera ilimitada ante bloqueos.
+
+### Validaciones y respuestas
+
+- La entrada requiere vehicle_id entero y existente: 422 con message y errors si falta o es inválido.
+- La salida utiliza enlace de modelo Vehicle: 404 si no existe el vehículo.
+- La consulta individual utiliza enlace de modelo Access: 404 si no existe el acceso.
+- Duplicado activo, estacionamiento lleno y salida sin entrada activa devuelven 409 con un mensaje JSON en español.
+- Entrada correcta: 201 con data del acceso creado.
+- Salida, listado, consulta y disponibilidad correctos: 200. Las operaciones de acceso devuelven data; disponibilidad devuelve directamente capacity, occupied y available.
+
+En esta etapa no se implementó el módulo de pagos ni se añadieron migraciones.
+
+### Pruebas y rutas
+
+Se creó AccessApiTest con RefreshDatabase y SQLite en memoria. Sus 11 pruebas cubren:
+
+1. Entrada válida, status active, exit_at null y hora asignada por el servidor.
+2. Reducción automática de disponibilidad después de entrar.
+3. Rechazo de entrada activa duplicada, sin crear otro registro.
+4. Salida válida, status closed y fecha de salida posterior a la entrada.
+5. Incremento de disponibilidad después de salir.
+6. Rechazo de salida sin entrada activa.
+7. Rechazo al alcanzar 50 accesos activos y admisión después de liberar un espacio.
+8. Respuesta exacta de disponibilidad, contando activos y excluyendo cerrados.
+9. Validación de vehículo requerido y existente; 404 en salida para vehículo inexistente.
+10. Listado, consulta individual y 404 para acceso inexistente.
+11. Rechazo de salida repetida sin alterar su fecha y posibilidad de un nuevo ingreso.
+
+El estacionamiento lleno se preparó directamente en la prueba creando 50 vehículos con accesos activos; no se añadió código de producción para generar esos datos.
+
+Comandos ejecutados con el contenedor temporal composer:2 utilizado anteriormente:
+
+```bash
+php artisan route --no-interaction
+php artisan route:list --path=api
+php artisan test
+```
+
+route presentó los subcomandos disponibles, como en la etapa anterior. route:list confirmó **10 rutas API: 5 existentes de vehículos y 5 nuevas**, asociadas a los métodos esperados.
+
+La suite completa finalizó con **31 pruebas aprobadas y 135 aserciones**, duración registrada de 0.49 segundos. Incluye las 20 pruebas anteriores.
+
+### Dificultad real y solución
+
+En la primera ejecución fallaron dos comparaciones de fechas: el reloj congelado conservaba microsegundos, mientras que los campos datetime se guardan con precisión de segundos. Se ajustó el reloj de esas pruebas con travelTo(now()->startOfSecond()), conservando las comprobaciones exactas del tiempo del servidor. Después se volvió a ejecutar toda la suite y las 31 pruebas aprobaron. No fue necesario cambiar el almacenamiento de fechas ni las reglas de negocio.
+
+### Revisión y commit
+
+Se revisaron los cambios y las exclusiones antes de preparar el commit. `.env`, bases SQLite locales, vendor y logs continúan fuera del control de versiones.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Http/Controllers/AccessController.php config/database.php routes/api.php tests/Feature/AccessApiTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: implementar control de accesos y disponibilidad"
+git status --short
+```
+
+## Etapa 5. Desarrollo del módulo de pagos
+
+Fecha: 30 de octubre de 2026.
+
+### Controlador y endpoints
+
+Se creó `PaymentController`, con index, show y store, reutilizando el modelo Payment. Las rutas se registran mediante apiResource limitado a esas tres acciones:
+
+| Método | Endpoint | Respuesta correcta |
+| --- | --- | --- |
+| GET | /api/payments | 200, listado ordenado por id |
+| GET | /api/payments/{payment} | 200, consulta individual |
+| POST | /api/payments | 201, pago creado |
+
+Las respuestas utilizan `{ "data": ... }`, con arreglo para el listado y objeto para un pago. El enlace implícito de Payment devuelve 404 con JSON si el registro no existe. No se añadieron rutas adicionales, actualizaciones ni eliminaciones de pagos.
+
+### Validaciones y reglas de negocio
+
+- access_id es requerido, entero y debe existir en accesses.
+- amount es requerido, numérico y mayor que cero.
+- Para respetar el decimal(10, 2) existente, amount permite de cero a dos decimales y un máximo de 99999999.99. Así se rechazan fracciones menores a un centavo en vez de presentarlas como cero mediante el cast decimal:2.
+- status se establece automáticamente en paid; paid_at utiliza now() del servidor. No se aceptan esos campos del cliente como fuente de estado o fecha.
+- Los datos inválidos devuelven 422 con message y errors. La creación válida devuelve 201.
+
+Se mantiene explícitamente la decisión de **un solo pago por acceso** adoptada en la etapa 2. access_id se valida con unique:payments,access_id para rechazar duplicados con 422; la restricción única de la base existente sigue actuando como respaldo. Payment::access() pertenece a Access y Access::payment() obtiene el pago asociado.
+
+La validación y creación se ejecutan dentro de DB::transaction, reutilizando la configuración SQLite IMMEDIATE de la etapa anterior para que las escrituras de esta API se serialicen antes de verificar duplicados. No se requirieron migraciones ni nuevas dependencias.
+
+No se impone que el acceso esté cerrado para registrar el pago, ya que no es una regla solicitada. El registro del pago no altera el acceso ni la disponibilidad. No se implementaron cálculos de tarifas, pasarelas reales ni servicios externos.
+
+### Pruebas realizadas
+
+Se añadió PaymentApiTest con RefreshDatabase y SQLite en memoria. Sus 13 casos ejecutados cubren:
+
+1. Registro válido con estado paid y relación correcta con el acceso en ambos sentidos.
+2. Listado de pagos.
+3. Consulta individual.
+4. JSON 404 para pago inexistente.
+5. Rechazo de access_id inexistente.
+6. Rechazo de monto cero.
+7. Rechazo de monto negativo.
+8. Rechazo de monto no numérico.
+9. Rechazo de fracciones menores a un centavo.
+10. Rechazo de monto fuera de la precisión declarada.
+11. Rechazo de campos obligatorios faltantes.
+12. Rechazo de pago duplicado sin modificar el pago original.
+13. Asignación de status y paid_at por el servidor, ignorando esos datos del cliente, y aceptación de 0.01.
+
+Las comparaciones de fechas usan un reloj fijado a segundos, conforme a la precisión de almacenamiento verificada en la etapa anterior.
+
+Comandos ejecutados en el contenedor temporal composer:2 ya utilizado:
+
+```bash
+php artisan route --no-interaction
+php artisan route:list --path=api/payments
+php artisan test
+```
+
+route mostró los subcomandos del espacio de comandos. route:list confirmó **3 rutas de pagos**: GET|HEAD /api/payments, POST /api/payments y GET|HEAD /api/payments/{payment}, asociadas a PaymentController.
+
+Resultado de la suite completa: **44 pruebas aprobadas y 189 aserciones**, duración registrada 0.58 segundos. Las 31 pruebas anteriores siguen aprobando.
+
+### Dificultades reales
+
+No se encontraron errores nuevos de implementación, rutas ni pruebas. Se reutilizó el entorno Docker previamente preparado sin descargar nuevas dependencias.
+
+### Revisión y commit
+
+Se revisaron git status y los archivos preparados. `.env`, SQLite local, vendor y logs continúan ignorados y no se versionan secretos.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Http/Controllers/PaymentController.php routes/api.php tests/Feature/PaymentApiTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: implementar módulo de pagos"
+git status --short
+```
+
+## Etapa 6. Pruebas integrales y revisión final
+
+Fecha: 30 de octubre de 2026.
+
+### Flujo integral probado
+
+Se añadió `tests/Feature/BackendIntegrationTest.php`, sin modificar la lógica de producción. La prueba crea un usuario mediante la factory estándar y ejecuta, a través de las rutas JSON existentes, todo el flujo solicitado:
+
+1. Registrar el vehículo asociado al usuario.
+2. Consultar disponibilidad inicial: 50 espacios, cero ocupados.
+3. Registrar la entrada y verificar status active y exit_at null.
+4. Confirmar disponibilidad de 49 espacios.
+5. Rechazar una segunda entrada con 409 y conservar un único acceso.
+6. Avanzar el reloj de prueba y registrar salida del mismo acceso, con status closed.
+7. Confirmar que vuelven a estar disponibles los 50 espacios.
+8. Rechazar otra salida con 409.
+9. Registrar un pago asociado al acceso cerrado.
+10. Rechazar otro pago del mismo acceso con 422, conservando el pago original.
+11. Consultar el pago por id y comprobar importe y relación.
+12. Consultar listados de accesos y pagos y comprobar el historial cerrado y su pago.
+13. Confirmar que pagar no cambia la disponibilidad ni reabre el acceso.
+
+Se ejecutó también la prueba existente de estacionamiento lleno: con 50 accesos activos devuelve cero espacios, rechaza otra entrada y permite ingresar cuando una salida libera un lugar. Está incluida en ambas ejecuciones completas de esta etapa.
+
+### Pruebas, validaciones y migraciones
+
+Primero se ejecutó la suite completa con la configuración normal de pruebas (SQLite en memoria): **45 pruebas aprobadas y 230 aserciones**, en 0.61 segundos.
+
+Para verificar además el arranque desde una base limpia se creó un archivo SQLite vacío y separado en el directorio de trabajo temporal, fuera del repositorio. No se eliminó ni sobrescribió la base local del proyecto. Se pasó únicamente al contenedor de validación la variable DB_DATABASE=/app/work/paypark-final-validation.sqlite.
+
+En ese mismo entorno se ejecutó:
+
+```bash
+php artisan migrate --no-interaction
+php artisan migrate:status
+php artisan test --compact
+```
+
+migrate creó la tabla de control y aplicó correctamente las **6 migraciones** (usuarios, cache, jobs, vehículos, accesos y pagos). migrate:status confirmó las seis como [1] Ran, sin pendientes.
+
+La suite posterior a migrate terminó nuevamente con **45 pruebas aprobadas y 230 aserciones**, en 0.64 segundos. La variable DB_DATABASE externa se mantuvo para esta segunda ejecución, por lo que se verificó SQLite en archivo además de SQLite en memoria. RefreshDatabase administra el esquema y las transacciones de aislamiento de las pruebas; no se utilizaron datos de la base local.
+
+Las pruebas verifican las validaciones de vehículos, relaciones Eloquent, placas únicas, existencia de usuarios/vehículos/accesos, capacidad máxima, duplicados activos, salida sin entrada, montos positivos, campos obligatorios y un solo pago por acceso. También verifican códigos 200, 201, 404, 409 y 422 según la operación.
+
+### Revisión de rutas
+
+Se ejecutó `php artisan route --no-interaction`, que muestra ayuda de los subcomandos y devuelve código 1 al no indicar una operación concreta. Por ello se ejecutó por separado:
+
+```bash
+php artisan route:list --path=api
+```
+
+Se confirmaron **13 rutas API**: cinco de vehículos, cuatro de accesos, una de disponibilidad y tres de pagos. Los métodos GET|HEAD, POST, PUT|PATCH y DELETE corresponden a las acciones implementadas. No se añadieron nuevas rutas en esta etapa.
+
+### Revisión de seguridad y repositorio
+
+- `.env` no está versionado y está ignorado.
+- `.env.example` existe y mantiene APP_KEY y credenciales vacías; utiliza SQLite.
+- La base SQLite local, sus archivos auxiliares y el archivo temporal de validación no están versionados.
+- Se revisaron los archivos versionados y patrones de claves privadas, tokens y claves APP_KEY reales; no se detectaron credenciales ni secretos. Los ejemplos y valores de factory son datos de demostración.
+- `.gitignore` excluye configuración local, vendor, node_modules, logs, cachés, archivos de claves y SQLite.
+- El único archivo nuevo de código es la prueba integral; no hay archivos temporales innecesarios dentro del conjunto versionado ni archivos nuevos sin seguimiento ajenos a la actividad. Los archivos de trabajo de validación se mantuvieron fuera del repositorio.
+- Se revisaron las referencias de controladores, modelos, relaciones, rutas y pruebas; no se encontró código propio abandonado o sin referencias que requiriera eliminarse.
+- No se añadieron dependencias. Se conservaron las herramientas estándar de Laravel de instalación, desarrollo y pruebas (incluyendo Tinker, Pail, Pao, Pint, PHPUnit y las herramientas de assets de la plantilla). Son herramientas opcionales de desarrollo; el flujo API y estas verificaciones no requieren Node ni compilar assets. No se añadió Vue, autenticación, Docker adicional ni infraestructura nueva.
+
+### Dificultades y correcciones
+
+No se encontraron errores en el flujo integral, migraciones ni pruebas. No fue necesario corregir código de producción. Se utilizó route:list por separado después de la ayuda y el código de salida de route, conforme al comportamiento ya observado en etapas anteriores.
+
+### Cierre
+
+Se añadió una prueba integral y esta documentación. El resultado valida el Backend dentro del alcance de la actividad escolar; no se incorporaron funcionalidades adicionales.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add tests/Feature/BackendIntegrationTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "test: validar flujo integral del Backend"
+git status --short
+```
+
+## Etapa 7. Autenticación básica
+
+Fecha: 30 de octubre de 2026.
+
+### Mecanismo y alcance
+
+Se instaló Laravel Sanctum 4.3.3 y se añadió HasApiTokens al modelo User. Se utiliza autenticación API mediante tokens personales Bearer, sin sesiones SPA ni servicios externos. Se creó AuthController y se publicó la migración estándar de Sanctum para personal_access_tokens, aplicada correctamente en SQLite (lote 2). Las siete migraciones del proyecto aparecen aplicadas.
+
+La autenticación básica implementada es suficiente para demostrar el Backend del MVP en esta actividad. No se desarrolló un sistema avanzado de roles y permisos porque excedería el alcance y tiempo de la actividad escolar.
+
+Se protegen únicamente /api/user y /api/logout con auth:sanctum. Las rutas existentes de vehículos, accesos, disponibilidad y pagos conservan el acceso anterior, según lo permitido en la consigna, evitando introducir autorización por usuario o modificar las pruebas y contratos de esos módulos.
+
+### Endpoints y respuestas
+
+| Método | Endpoint | Función | Respuesta correcta |
+| --- | --- | --- | --- |
+| POST | /api/register | Registrar usuario y emitir token | 201 |
+| POST | /api/login | Verificar credenciales y emitir token | 200 |
+| GET | /api/user | Consultar usuario autenticado | 200 |
+| POST | /api/logout | Revocar el token actual | 200 |
+
+Registro y login devuelven data con el usuario, token y token_type Bearer. El cliente utiliza `Authorization: Bearer <token>` para consultar /api/user y cerrar sesión. La consulta devuelve data; logout devuelve un mensaje JSON en español. Logout elimina únicamente el token de esa petición; otros tokens del usuario permanecen válidos.
+
+Los tokens completos se entregan al cliente al emitirlos. Sanctum almacena el hash del secreto del token en la base; no se registra el token completo en archivos del proyecto.
+
+### Validaciones y contraseñas
+
+- Registro: name requerido, string y máximo 255; email requerido, formato válido, máximo 255 y único; password requerido, string y mínimo 8 caracteres (máximo 255).
+- Login: email requerido y válido; password requerido y string.
+- Las credenciales se verifican con Hash::check. Usuario inexistente y contraseña incorrecta reciben el mismo mensaje genérico con estado 422, sin emitir tokens.
+- Datos inválidos o correo duplicado: 422 con message y errors.
+- Sin token o con token inválido/revocado en rutas protegidas: 401 en JSON, incluso sin cabecera Accept.
+
+El cast hashed ya presente en User aplica el hash de contraseña de Laravel. Se conserva la configuración estándar de hashing y los atributos ocultos password y remember_token, que no aparecen en las respuestas JSON. El registro crea usuario y token dentro de una transacción.
+
+### Instalación y comandos
+
+Se utilizó el entorno temporal Docker ya preparado. Se añadió únicamente Sanctum, sin actualizar las otras dependencias:
+
+```bash
+composer require laravel/sanctum --no-install --no-scripts --no-interaction
+composer install --no-interaction --prefer-dist
+php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider" --tag=sanctum-migrations
+php artisan migrate --no-interaction
+php artisan test --compact
+php artisan migrate:status
+php artisan route --no-interaction
+php artisan route:list --path=api -v
+```
+
+Para descargar Sanctum se reutilizó la adaptación temporal ya documentada para esta red: la URL de su distribución se cambió localmente de api.github.com a codeload.github.com, conservando la referencia exacta. Después de instalar se restauró el composer.lock original generado por Composer, antes de las comprobaciones finales. No se intentó de nuevo la descarga bloqueada ni se deshabilitó TLS.
+
+### Pruebas y rutas
+
+Se añadió AuthApiTest con diez pruebas, usando tokens Bearer reales emitidos por Sanctum:
+
+1. Registro válido, hash de contraseña y token utilizable.
+2. Rechazo de email duplicado sin emitir tokens.
+3. Rechazo de datos incompletos.
+4. Rechazo de email inválido y contraseña corta.
+5. Login correcto con token utilizable.
+6. Rechazo de contraseña incorrecta y usuario inexistente, sin emitir tokens.
+7. Rechazo de login sin credenciales.
+8. Consulta del usuario autenticado sin exponer password ni remember_token.
+9. Rechazo de acceso sin token o con token inválido y de logout sin autenticar.
+10. Logout válido, revocación efectiva y conservación de otro token del mismo usuario.
+
+En la prueba de revocación se resuelven nuevamente los guards entre peticiones para representar peticiones HTTP independientes, sin reutilizar el usuario almacenado en memoria por el guard durante la prueba.
+
+Resultado final de toda la suite: **55 pruebas aprobadas, 287 aserciones**, duración registrada 0.69 segundos. Las 45 pruebas previas siguen aprobando, incluido el flujo integral y estacionamiento lleno.
+
+route mostró la ayuda del espacio de comandos. route:list confirmó **17 rutas API**, incluyendo las cuatro nuevas, y mostró auth:sanctum únicamente en /api/user y /api/logout.
+
+### Dificultad real y solución
+
+La primera ejecución detectó un fallo al consultar /api/user sin token y sin Accept: el middleware estándar intentaba construir una redirección a una ruta web login inexistente. Se configuró redirectGuestsTo en bootstrap/app.php para no generar redirección web en /api/*, conservando la respuesta JSON configurada para la API. La petición pasó a devolver 401 y la suite completa aprobó. No se añadió una pantalla ni una ruta de login web.
+
+### Revisión de Git
+
+Se revisan únicamente el controlador, el trait de User, la configuración de respuesta de autenticación, rutas, migración de Sanctum, dependencia y lock, pruebas y esta bitácora. `.env`, SQLite local, vendor y tokens reales permanecen fuera del control de versiones.
+
+```bash
+git status --short
+git diff --check
+git check-ignore .env database/database.sqlite vendor/autoload.php
+git add app/Http/Controllers/AuthController.php app/Models/User.php bootstrap/app.php composer.json composer.lock routes/api.php database/migrations/*_create_personal_access_tokens_table.php tests/Feature/AuthApiTest.php docs/ACTIVIDAD_3_1_BITACORA.md
+git diff --cached --check
+git diff --cached --name-only
+git commit -m "feat: implementar autenticación básica"
+git status --short
+```
+
+
+## Cierre técnico y documental de la Actividad 3.1
+
+Se revisaron las etapas 1 a 7 frente a los modelos, migraciones, controladores, rutas y pruebas existentes. Se identificó expresamente la etapa 1 y se aclaró que los resultados de cada etapa son históricos. Se actualizó el README para describir el Backend completo y se creó docs/RESUMEN_ACTIVIDAD_3_1.md como base académica para redactar el reporte en Word. No se modificaron funcionalidades ni pruebas durante este cierre.
+
+La documentación distingue el Frontend planeado en Vue.js del Backend entregado y no atribuye al proyecto sensores, cámaras, reconocimiento de placas, barreras automáticas ni pasarelas reales. También explicita que solo user y logout están protegidos, y que no se desarrollaron roles avanzados.
+
+El cambio de MySQL a SQLite responde al alcance académico y al tiempo disponible: reduce configuración, mantiene una base relacional real y conserva migraciones, relaciones y reglas de negocio.
+
+### Verificación final
+
+Se ejecutaron nuevamente en el entorno de herramientas ya utilizado:
+
+```bash
+php artisan migrate --no-interaction
+php artisan migrate:status
+php artisan test --compact
+php artisan route --no-interaction
+php artisan route:list --path=api -v
+```
+
+migrate indicó Nothing to migrate; migrate:status confirmó las siete migraciones aplicadas y ninguna pendiente. La suite completa aprobó sus 55 pruebas y 287 aserciones. route mostró ayuda; route:list verificó 17 rutas API y auth:sanctum en user y logout.
+
+Se revisaron .env.example, .gitignore y los archivos versionados: .env, SQLite local y vendor no están en el índice. La revisión de patrones de secretos no detectó claves privadas, tokens ni claves de aplicación reales en el contenido versionado. Los únicos cambios del cierre corresponden a README.md, esta bitácora y el resumen académico.
+
+### Dificultades consolidadas
+
+Las dificultades registradas son las ocurridas y resueltas durante las etapas: ausencia inicial de PHP y Composer directamente disponibles, restricción de acceso a api.github.com, uso de route:list tras la ayuda de route, precisión de fechas en pruebas y redirección web de una petición API sin Accept. Sus soluciones se describen en las etapas correspondientes y en el resumen académico. No se encontraron dificultades nuevas en el cierre.
+
+El commit documental final utiliza el mensaje docs: completar documentación del Backend de PayPark. Tras realizarlo se verifica que git status quede limpio.
