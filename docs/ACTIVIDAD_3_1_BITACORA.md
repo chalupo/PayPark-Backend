@@ -1,17 +1,21 @@
-# Actividad 3.1 — Bitácora de inicialización de PayPark Backend
+# Actividad 3.1 — Bitácora de desarrollo de PayPark Backend
 
 Fecha: 30 de octubre de 2026.
 Materia: Proyecto VIII, Licenciatura en Desarrollo de Sistemas Web.
 
-## Preparación y alcance
+Esta bitácora es cronológica: los alcances, cantidades de pruebas y rutas de cada etapa describen el resultado en ese momento. El cierre actual comprende siete migraciones, 55 pruebas, 287 aserciones y 17 rutas API.
+
+## Etapa 1. Inicialización de Laravel y configuración de SQLite
+
+### Preparación y alcance
 
 El repositorio original contenía únicamente `README.md`, con el título `# PayPark-Backend`, y estaba limpio. Se conservó ese contenido y se añadieron instrucciones de instalación y verificación. No había instrucciones locales AGENTS.md antes de la inicialización.
 
-Se instaló la plantilla oficial `laravel/laravel` v13.11.0, con Laravel Framework 13.39.0 resuelto en `composer.lock`. Se mantuvieron la estructura, las migraciones y las dos pruebas estándar. No se implementaron vehículos, accesos, pagos, autenticación adicional ni reglas de negocio. La comunicación REST/JSON y el frontend futuro Vue.js permanecen como contexto del proyecto; no se desarrollaron en esta actividad.
+Se instaló la plantilla oficial `laravel/laravel` v13.11.0, con Laravel Framework 13.39.0 resuelto en `composer.lock`. Se mantuvieron la estructura, las migraciones y las dos pruebas estándar. En esta primera etapa no se implementaron vehículos, accesos, pagos, autenticación adicional ni reglas de negocio. La comunicación REST/JSON y el frontend futuro Vue.js permanecen como contexto del proyecto; no se desarrollaron en esta primera etapa.
 
 Se omitieron los archivos de mantenimiento de la distribución de Laravel (`.github/`, CHANGELOG.md, .styleci.yml e instrucciones genéricas AGENTS.md/CLAUDE.md). No se añadió Boost ni infraestructura adicional al proyecto académico.
 
-## Herramientas y dificultades del entorno
+### Herramientas y dificultades del entorno
 
 El entorno Debian 13 no tenía PHP ni Composer (`command not found`). No había sudo y la instalación de paquetes del sistema no estaba permitida. Se utilizó Docker como herramienta temporal de ejecución, sin añadir Docker como requisito del proyecto.
 
@@ -24,17 +28,15 @@ Imagen utilizada: `composer:2`, digest `sha256:4ed71c38c6d788eb4e4e3747b5332f5b4
 
 La descarga por defecto de Composer falló con HTTP 403 porque `api.github.com` no está habilitado en la política de red. El intento `--prefer-source` descargaba el historial completo y se interrumpió para usar una clonación superficial de la etiqueta oficial. Las distribuciones de dependencias se obtuvieron de `codeload.github.com`, permitido por el entorno, conservando repositorios y referencias exactas. Solo durante la instalación se cambiaron las URLs de distribución del lock y después se restauró el lock original de Composer. No se deshabilitó TLS ni se almacenaron credenciales o certificados del entorno en el repositorio.
 
-Git dentro del contenedor mostró una advertencia de propiedad del directorio montado. Para la instalación se autorizó únicamente `/app/PayPark-Backend` como safe.directory dentro del contenedor temporal. El Git del repositorio se ejecutó desde el entorno anfitrión.
+### Elección de SQLite y cambio de planeación
 
-## Elección de SQLite y cambio de planeación
+En la planeación original se contemplaba una base de datos como MySQL; se utilizó SQLite en lugar de esa configuración. Para esta implementación académica se decidió utilizar SQLite para reducir configuración y dependencias externas y facilitar una demostración del MVP en el tiempo disponible.
 
-Originalmente el proyecto podía utilizar una base de datos como MySQL. Para esta implementación académica se decidió utilizar SQLite para reducir configuración y dependencias externas y facilitar una demostración del MVP en el tiempo disponible.
-
-Este cambio no modifica las reglas de negocio ni la arquitectura lógica del Backend: se mantiene Laravel, la futura API REST/JSON y la separación del frontend Vue.js. La metodología prevista continúa siendo Scrum.
+SQLite mantiene una base de datos relacional real y se siguen utilizando migraciones y relaciones de Laravel. Este cambio no modifica las reglas de negocio ni la arquitectura lógica del Backend: se mantiene Laravel, la futura API REST/JSON y la separación del frontend Vue.js. La metodología prevista continúa siendo Scrum.
 
 Se configuró `APP_NAME=PayPark` y `DB_CONNECTION=sqlite` en `.env.example`. `DB_DATABASE` queda sin definir para que Laravel utilice `database_path('database.sqlite')`, sin rutas absolutas del entorno. Se creó localmente `database/database.sqlite` con `touch`. `.env` contiene una clave generada localmente y no se versiona; `.env.example` mantiene `APP_KEY` vacía.
 
-## Comandos utilizados
+### Comandos utilizados
 
 Inspección inicial:
 
@@ -99,7 +101,7 @@ git commit -m "chore: initialize Laravel backend with SQLite"
 git status --short
 ```
 
-## Resultado de migraciones
+### Resultado de migraciones
 
 `php artisan migrate --no-interaction` terminó correctamente y creó la tabla de control de migraciones. Se aplicaron las tres migraciones estándar:
 
@@ -111,7 +113,7 @@ git status --short
 
 `php artisan migrate:status` confirmó estos tres estados sin migraciones pendientes. No se añadieron migraciones propias.
 
-## Resultado de pruebas y diagnóstico
+### Resultado de pruebas y diagnóstico
 
 `php artisan test`: **2 pruebas aprobadas, 2 aserciones**, duración 0.16 s:
 
@@ -122,7 +124,7 @@ git status --short
 
 `composer check-platform-reqs` aprobó todos los requisitos y `composer validate --no-check-publish` confirmó que composer.json es válido.
 
-## Revisión de Git
+### Revisión de Git
 
 `.gitignore` excluye `.env`, variantes locales de configuración (exceptuando `.env.example`), bases SQLite, vendor, node_modules, logs, claves de storage, cachés y artefactos de compilación. Los directorios de almacenamiento conservan los .gitignore estándar de Laravel.
 
@@ -333,7 +335,7 @@ Las entradas y salidas utilizan DB::transaction. En la configuración SQLite se 
 - Entrada correcta: 201 con data del acceso creado.
 - Salida, listado, consulta y disponibilidad correctos: 200. Las operaciones de acceso devuelven data; disponibilidad devuelve directamente capacity, occupied y available.
 
-No se modificó el módulo de pagos ni se añadieron migraciones para esta etapa.
+En esta etapa no se implementó el módulo de pagos ni se añadieron migraciones.
 
 ### Pruebas y rutas
 
@@ -640,3 +642,34 @@ git diff --cached --name-only
 git commit -m "feat: implementar autenticación básica"
 git status --short
 ```
+
+
+## Cierre técnico y documental de la Actividad 3.1
+
+Se revisaron las etapas 1 a 7 frente a los modelos, migraciones, controladores, rutas y pruebas existentes. Se identificó expresamente la etapa 1 y se aclaró que los resultados de cada etapa son históricos. Se actualizó el README para describir el Backend completo y se creó docs/RESUMEN_ACTIVIDAD_3_1.md como base académica para redactar el reporte en Word. No se modificaron funcionalidades ni pruebas durante este cierre.
+
+La documentación distingue el Frontend planeado en Vue.js del Backend entregado y no atribuye al proyecto sensores, cámaras, reconocimiento de placas, barreras automáticas ni pasarelas reales. También explicita que solo user y logout están protegidos, y que no se desarrollaron roles avanzados.
+
+El cambio de MySQL a SQLite responde al alcance académico y al tiempo disponible: reduce configuración, mantiene una base relacional real y conserva migraciones, relaciones y reglas de negocio.
+
+### Verificación final
+
+Se ejecutaron nuevamente en el entorno de herramientas ya utilizado:
+
+```bash
+php artisan migrate --no-interaction
+php artisan migrate:status
+php artisan test --compact
+php artisan route --no-interaction
+php artisan route:list --path=api -v
+```
+
+migrate indicó Nothing to migrate; migrate:status confirmó las siete migraciones aplicadas y ninguna pendiente. La suite completa aprobó sus 55 pruebas y 287 aserciones. route mostró ayuda; route:list verificó 17 rutas API y auth:sanctum en user y logout.
+
+Se revisaron .env.example, .gitignore y los archivos versionados: .env, SQLite local y vendor no están en el índice. La revisión de patrones de secretos no detectó claves privadas, tokens ni claves de aplicación reales en el contenido versionado. Los únicos cambios del cierre corresponden a README.md, esta bitácora y el resumen académico.
+
+### Dificultades consolidadas
+
+Las dificultades registradas son las ocurridas y resueltas durante las etapas: ausencia inicial de PHP y Composer directamente disponibles, restricción de acceso a api.github.com, uso de route:list tras la ayuda de route, precisión de fechas en pruebas y redirección web de una petición API sin Accept. Sus soluciones se describen en las etapas correspondientes y en el resumen académico. No se encontraron dificultades nuevas en el cierre.
+
+El commit documental final utiliza el mensaje docs: completar documentación del Backend de PayPark. Tras realizarlo se verifica que git status quede limpio.
